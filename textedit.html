@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Textedit</title>
+	<style>
+		html, body {
+			width: 100%;
+			height: 100%;
+			font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+		}
+		@keyframes error {
+			0% {color: #ff8080;}
+			50% {color: #ff0000;}
+			100% {color: #000000}
+		}
+		kbd {
+			font-size: smaller;
+			opacity: 0.5;
+		}
+		kbd::before {
+			content: "(";
+		}
+		kbd::after {
+			content: ")";
+		}
+		body {
+			margin: 0;
+			display: flex;
+			flex-direction: column;
+		}
+		nav {
+			height: 26px;
+			background-color: lightgray;
+			display: flex;
+		}
+		div.menu {
+			display: none;
+			position: absolute;
+			flex-direction: column;
+			width: max-content;
+			margin-left: 100%;
+			margin-top: -25px;
+			box-shadow: #00000080 2px 2px 2px;
+		}
+		nav > .dropdown > .menu {
+			margin-left: 0;
+			margin-top: 0;
+		}
+		.dropdown:hover > div {
+			display: flex;
+		}
+		.dropdown button {
+			text-align: start;
+			width: 100%;
+		}
+		button {
+			border: 1px outset;
+			padding: 4px;
+			font-size: 12px;
+			background: lightgray;
+			cursor: pointer;
+		}
+		button:disabled {
+			background: whitesmoke;
+			cursor: default;
+		}
+		:not(nav) > .dropdown > button::after {
+			content: "›";
+			float: right;
+			margin-left: 4px;
+			font-family: 'Courier New', Courier, monospace;
+		}
+		button:not(:disabled):hover {
+			background: lightblue;
+		}
+		button:not(:disabled):active {
+			background: gray;
+		}
+		button[toggle] {
+			max-height: 25px;
+		}
+		button[toggle]::before {
+			content: "☐";
+			margin-right: 4px;
+		}
+		button[toggle][checked]::before {
+			content: "☒";
+		}
+		main {
+			display: flex;
+			height: 100%;
+			width: 100%;
+		}
+		textarea {
+			font-family: 'Courier New', Courier, monospace;
+			resize: none;
+			max-height: 100%;
+			width: 100%;
+			border: 1px inset;
+			padding: 6px;
+			font-size: 14px;
+			tab-size: 4;
+			line-height: 16px;
+			text-transform: full-width;
+		}
+		::spelling-error {
+			text-decoration: none;
+		}
+		textarea:not([linewrap]) {
+			white-space: nowrap;
+		}
+		textarea:focus {
+			outline: 0;
+		}
+		footer {
+			height: max-content;
+			background-color: lightgray;
+			display: flex;
+			justify-content: space-between;
+			border: 1px outset;
+			overflow-x: scroll;
+			text-wrap: nowrap;
+		}
+		footer div {
+			font-size: 12px;
+			text-align: start;
+			border: 1px inset;
+			margin: 1px;
+			padding: 2px;
+			width: 100%;
+		}
+	</style>
+</head>
+
+<body>
+	<nav>
+		<div class="dropdown">
+			<button>File</button>
+			<div class="menu">
+				<button name="new">New blank file</button>
+				<button name="open">Open <kbd>CRTL+O</kbd></button>
+				<button name="save">Save <kbd>CRTL+S</kbd></button>
+				<button name="saveas">Save as… <kbd>CRTL+SHIFT+S</kbd></button>
+				<button name="quit">Quit <kbd>CRTL+Q</kbd></button>
+			</div>
+		</div>
+
+		<div class="dropdown">
+			<button>Edit</button>
+			<div class="menu">
+				<button name="selectall">Select all <kbd>CRTL+A</kbd></button>
+				<button name="copy">Copy <kbd>CRTL+C</kbd></button>
+				<button name="paste">Paste <kbd>CRTL+V</kbd></button>
+				<button name="cut">Cut <kbd>CRTL+X</kbd></button>
+				<button name="code" disabled>Run code… <kbd>EXPERIMENTAL</kbd></button>
+			</div>
+		</div>
+		
+		<div class="dropdown">
+			<button>View</button>
+			<div class="menu">
+				<button name="linewrap" toggle>Line wrap</button>
+				<div class="dropdown">
+					<button name="statusbar" toggle>Status bar</button>
+					<div class="menu">
+						<button name="fileinfo" toggle disabled>File info</button>
+						<button name="charcount" toggle disabled>Character count</button>
+						<button name="filesize" toggle disabled>File size</button>
+						<button name="version" toggle disabled>Verison</button>
+					</div>
+				</div>
+				<button disabled>Line numbers</button>
+			</div>
+		</div>
+
+		<div class="dropdown">
+			<button>Help</button>
+			<div class="menu">
+				<button name="about">About/Credits</button>
+				<button name="template">Load template file</button>
+				<div class="dropdown">
+					<button>Danger zone</button>
+					<div class="menu">
+						<button name="danger" toggle>Unlock experimental features <kbd>USE WITH CAUTION</kbd></button>
+						<button name="runasjs" disabled>Run file as javascript</button>
+					</div>
+				</div>
+				<button name="defaults">Factory reset</button>
+			</div>
+		</div>
+	</nav>
+
+	<main>
+		<textarea autofocus id="textbox"></textarea>
+	</main>
+
+	<footer id="statusbar">
+		<!-- filled by js -->
+		<div style="animation: error infinite linear 0.5s;">FATAL ERROR: Javascript not detected. Javascript may be disabled or there is an error in this file.</div>
+	</footer>
+
+	<script>
+		const textbox = document.getElementById("textbox");
+		const statusbar = document.getElementById("statusbar");
+		const VERSION = "0.7";
+
+		// default settings
+		var settings = {
+			"statusbar": true,
+			"fileinfo": true,
+			"charcount": false,
+			"filesize": true,
+			"version": true
+		};
+
+		// load previous settings
+		if (localStorage.getItem("settings")) {
+			settings = JSON.parse(localStorage.getItem("settings"));
+		}
+
+		// load settings into menu
+		function refreshMenuButtons() {
+			for (let menuButton of document.querySelectorAll(".dropdown .menu button")) {
+				// disable settings if undefined
+				if (settings[menuButton.name] == undefined)
+					settings[menuButton.name] = false;
+				// check buttons based on settings
+				if (settings[menuButton.name] != menuButton.hasAttribute("checked"))
+					menuButton.toggleAttribute("checked");
+				// toggle statusbar buttons
+				if ((settings["statusbar"] == menuButton.hasAttribute("disabled")) && ["fileinfo", "charcount", "filesize", "version", "debug"].includes(menuButton.name)) 
+					menuButton.toggleAttribute("disabled");
+				// toggle dangerous features
+				if ((settings["danger"] == menuButton.hasAttribute("disabled")) && ["code", "runasjs"].includes(menuButton.name)) 
+					menuButton.toggleAttribute("disabled");
+			}
+		}
+
+		var filename = "Untitled.txt";
+		var saved = true;
+		var fileHandle;
+
+		const buttonActions = {
+			"quit": ()=>{
+				window.location.assign("./");
+			},
+			"about": ()=>{
+				window.alert(`Textedit verison ${VERSION}\nMade by Thomas Moraine-Radenac\nCRLS 2024`);
+			},
+			"defaults": ()=>{
+				if (confirm("Locally saved settings will be reset!"))
+				localStorage.clear();
+				window.location.reload();
+			},
+			"new": ()=>{
+				if (saved || confirm("Your file is not saved! Replace anyway?")) {
+					filename = "Untitled.txt";
+					textbox.value = "";
+					textbox.focus();
+					saved = true;
+				}
+				refreshStatusBar();
+			},
+			"save": async()=>{
+				if (fileHandle == undefined) {
+					fileHandle = await window.showSaveFilePicker({suggestedName: filename});
+					let file = await fileHandle.getFile();
+					filename = file.name;
+				}
+				let writable = await fileHandle.createWritable();
+				await writable.write(textbox.value);
+				await writable.close();
+				saved = true;
+				refreshStatusBar();
+			},
+			"saveas": async()=>{
+				fileHandle = await window.showSaveFilePicker({suggestedName: filename});
+				let writable = await fileHandle.createWritable();
+				await writable.write(textbox.value);
+				await writable.close();
+				let file = await fileHandle.getFile();
+				filename = file.name;
+				saved = true;
+				refreshStatusBar();
+			},
+			"open": async()=>{
+				[fileHandle] = await window.showOpenFilePicker({
+					types: [
+						{description: "", accept: {"text/*": [".json", ".frag"]}},
+					]
+				});
+				if (saved || confirm("Your file is not saved! Replace anyway?")) {
+					let file = await fileHandle.getFile();
+					filename = file.name;
+					saved = true;
+					textbox.value = await file.text();
+					textbox.selectionStart = textbox.selectionEnd = 0;
+					refreshStatusBar();
+				}
+			},
+			"selectall": ()=>{
+				textbox.select();
+			},
+			"copy": ()=>{
+				navigator.clipboard.writeText(window.getSelection().toString())
+			},
+			"paste": async ()=>{
+				const [start, end] = [textbox.selectionStart, textbox.selectionEnd];
+				textbox.setRangeText(await navigator.clipboard.readText(), start, end, 'select');
+				textbox.focus();
+				window.getSelection().collapseToEnd();
+			},
+			"cut": ()=>{
+				let selection = window.getSelection();
+				navigator.clipboard.writeText(selection.toString())
+				selection.deleteFromDocument();
+			},
+			"code": async ()=>{
+				const codeSamples = [
+					"while (text.includes('\\n')) {text = text.replace('\\n', '');} return text;",
+					"text = text.toUpperCase()",
+					"return 'data:text/plain;base64,' + btoa(text);",
+					"throw [][(![]+[])[+!![]]+(!![]+[])[+[]]][([]+[][(![]+[])[+!![]]+(!![]+[])[+[]]])[!![]+!![]+!![]]+(!![]+[][(![]+[])[+!![]]+(!![]+[])[+[]]])[+!![]+[+[]]]+([][[]]+[])[+!![]]+(![]+[])[!![]+!![]+!![]]+(!![]+[])[+[]]+(!![]+[])[+!![]]+([][[]]+[])[+[]]+([]+[][(![]+[])[+!![]]+(!![]+[])[+[]]])[!![]+!![]+!![]]+(!![]+[])[+[]]+(!![]+[][(![]+[])[+!![]]+(!![]+[])[+[]]])[+!![]+[+[]]]+(!![]+[])[+!![]]]((!![]+[])[+!![]]+(!![]+[])[!![]+!![]+!![]]+(!![]+[])[+[]]+([][[]]+[])[+[]]+(!![]+[])[+!![]]+([][[]]+[])[+!![]]+(+[![]]+[][(![]+[])[+!![]]+(!![]+[])[+[]]])[+!![]+[+!![]]]+(![]+[])[+!![]]+(!![]+[])[+[]]+(!![]+[][(![]+[])[+!![]]+(!![]+[])[+[]]])[+!![]+[+[]]]+([]+[][(!![]+[])[!![]+!![]+!![]]+([][[]]+[])[+!![]]+(!![]+[])[+[]]+(!![]+[])[+!![]]+([![]]+[][[]])[+!![]+[+[]]]+(!![]+[])[!![]+!![]+!![]]+(![]+[])[!![]+!![]+!![]]]())[!![]+!![]])()(+[]+[+[]]+(+[])+(!![]+!![]+!![]+!![]+!![]+!![]))[!![]+!![]]+(!![]+!![]+!![])"
+				];
+				try {
+					let code = window.prompt("Enter javascript snippet:\nvar `text` is file contents, return are supported", codeSamples[Math.floor(Math.random() * (codeSamples.length + 1))]);
+					textbox.value = await eval(`(async (text)=>{${code};return text;})(textbox.value);`);
+					refreshStatusBar();
+				} catch(e) {
+					alert(e);
+				}
+			},
+			"runasjs": async ()=>{
+				try {
+					alert(await eval(`(async (text)=>{${textbox.value};})(textbox.value);`));
+					refreshStatusBar();
+				} catch(e) {
+					alert(e);
+				}
+			},
+			"template": ()=>{
+				if (saved || confirm("Your file is not saved! Replace anyway?")) {
+					filename = "textedit.html";
+					textbox.value = document.documentElement.outerHTML;
+					textbox.selectionStart = textbox.selectionEnd = 0;
+					textbox.focus();
+					saved = true;
+				}
+				refreshStatusBar();
+			}
+		};
+
+		// dropdown menus actions
+		for (let menuButton of document.querySelectorAll(".dropdown .menu button")) {
+			menuButton.addEventListener("click", (e) => {
+				// toggle buttons
+				if (menuButton.hasAttribute("toggle")) {
+					settings[menuButton.name] = !menuButton.hasAttribute("checked");
+					localStorage.setItem("settings", JSON.stringify(settings));
+					refreshMenuButtons();
+					refreshStatusBar();
+				}
+				// action buttons
+				if (buttonActions[menuButton.name] != undefined) {
+					buttonActions[menuButton.name]();
+					textbox.focus();
+				}
+			});
+		}
+
+		function refreshStatusBar() {
+			if (settings.statusbar) {
+				statusbar.style.display = "flex";
+				let text = "";
+				let bytes = new Blob([textbox.value]).size;
+				const statusMessages = {
+					"fileinfo": `Editing ${filename}` + (saved ? "": " (Unsaved)"),
+					"charcount": `${textbox.value.length} chars`,
+					"filesize": (bytes > 999 ? `${Math.floor(bytes / 100) / 10} KB` : `${bytes} bytes`),
+					"version": `Textedit v${VERSION}`,
+					"debug": JSON.stringify(settings)
+				};
+				for (let i of Object.keys(statusMessages)) {
+					if (settings[i]) {
+						text += `<div>${statusMessages[i]}</div>`;
+					}
+				}
+				statusbar.innerHTML = text;
+			} else {
+				statusbar.style.display = "none";
+			}
+			// also refresh linewrap on textbox - idk where else to do this lol 
+			if (settings["linewrap"] != textbox.hasAttribute("linewrap")) {
+				textbox.toggleAttribute("linewrap");
+			}
+		}
+		
+		// prevent window close if not saved
+		window.addEventListener('beforeunload', function (e) {
+			if (!saved) {
+				e.preventDefault();
+				e.returnValue = '';
+			}
+		});
+
+		// catch keyboard shortcuts
+		document.addEventListener('keydown', e => {
+			if (e.ctrlKey) {
+				if (e.key === 'q') {
+					buttonActions["quit"]();
+				} else if (e.key === 's') {
+					e.preventDefault();
+					if (e.shiftKey)
+						buttonActions["saveas"]();
+					else 
+						buttonActions["save"]();
+				} else if (e.key === 'o') {
+					e.preventDefault();
+					buttonActions["open"]();
+				}
+			}
+		});
+
+		// refresh on text input
+		textbox.addEventListener("input", ()=>{
+			saved = false;
+			refreshStatusBar();
+		});
+
+		// refresh on load
+		refreshMenuButtons();
+		refreshStatusBar();
+	</script>
+</body>
+
+</html>
